@@ -120,20 +120,18 @@ export class Server {
   sort: number
 
   @Column({
-    type: 'enum',
-    enum: ServerStatusEnum,
+    type: 'tinyint',
     name: 'status',
     comment: '0-未安装、1-安装中、2-卸载中、3-已安装未启动、4-已安装已启动',
-    default: ServerStatusEnum.NOT_INSTALLED
+    default: () => '0'
   })
   status: ServerStatusEnum
 
   @Column({
-    type: 'enum',
-    enum: ServerTypeEnum,
+    type: 'tinyint',
     name: 'type',
     comment: '0-自有服务器、1-外部资源',
-    default: ServerTypeEnum.SELF
+    default: () => '0'
   })
   type: ServerTypeEnum
 
@@ -146,17 +144,16 @@ export class Server {
 
   @Column('varchar', {
     name: 'external_content',
-    comment: '外部资源内容(类似vless://abc...)',
+    comment: '外部资源配置(JSON对象)',
     nullable: true
   })
   externalContent: string | null
 
   @Column({
-    type: 'enum',
-    enum: EnableEnum,
+    type: 'tinyint',
     name: 'enable',
     comment: '0-禁用、1-启用',
-    default: EnableEnum.YES,
+    default: () => '1',
   })
   enable: EnableEnum
 
