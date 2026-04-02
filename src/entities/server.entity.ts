@@ -144,7 +144,7 @@ export class Server {
 
   @Column('varchar', {
     name: 'external_content',
-    comment: '外部资源配置(JSON对象)',
+    comment: '外部资源配置(类似vless://xxx)',
     nullable: true
   })
   externalContent: string | null
