@@ -2,6 +2,7 @@ import { ServerStatusEnum } from '../enums'
 import { execSync, to } from '.'
 import { writeFileSync } from 'fs'
 import { join } from 'path'
+import { createHash } from 'crypto'
 
 export async function startNginx(bt: boolean) {
   await to(execSync(bt ? '/etc/init.d/nginx start' : 'systemctl start nginx'))
@@ -21,7 +22,7 @@ export async function fetchTrojanStatus(port: number): Promise<ServerStatusEnum>
 export async function configTrojanJson(
   ip: string,
   port: number,
-  domain: string
+  domain: string,
 ) {
   let text = `
   "run_type": "server",
@@ -29,7 +30,9 @@ export async function configTrojanJson(
   "local_port": ${port},
   "remote_addr": "127.0.0.1",
   "remote_port": 80,
-  "password": [],
+  "password": [
+      "${createHash('md5').update(ip).digest('hex')}"
+  ],
   "ssl": {
     "cert": "",
     "key": "",

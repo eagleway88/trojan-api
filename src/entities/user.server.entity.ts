@@ -1,10 +1,11 @@
-import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm'
+import { Column, Entity, PrimaryGeneratedColumn, Unique } from 'typeorm'
 import { UpdateDateColumn, CreateDateColumn } from 'typeorm'
 import { ManyToOne, JoinColumn } from 'typeorm'
 import { Server } from './server.entity'
 import { PlatformTypeEnum } from '../enums'
 
 @Entity('user_servers')
+@Unique('uniq_user_servers_user_platform', ['userId', 'platform'])
 export class UserServer {
   @PrimaryGeneratedColumn({
     type: 'int',
