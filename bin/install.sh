@@ -30,6 +30,9 @@ fi
 ZIP_FILE="trojan-go"
 CONFIG_FILE="/etc/trojan-go/config.json"
 CONFIG_JSON="/opt/trojan-go-cmd/bin/${IP}.json"
+ACME_HOME="${HOME}/.acme.sh"
+ACME_CMD="${ACME_HOME}/acme.sh"
+ACME_LOG="/tmp/trojan-go-acme.log"
 
 WS="false"
 
@@ -150,6 +153,11 @@ archAffix() {
 }
 
 getData() {
+    if [[ ! -f "$CONFIG_JSON" ]]; then
+        colorEcho $RED "配置文件不存在: ${CONFIG_JSON}"
+        exit 1
+    fi
+
     domain=`grep sni $CONFIG_JSON | cut -d\" -f4`
     port=`grep local_port $CONFIG_JSON | cut -d: -f2 | tr -d \",' '`
     line1=`grep -n 'password' $CONFIG_JSON  | head -n1 | cut -d: -f1`
@@ -171,6 +179,22 @@ getData() {
     DOMAIN="${domain}"
     PASSWORD="${password}"
     WS="${ws}"
+
+    if [[ -z "$DOMAIN" || -z "$PORT" || -z "$PASSWORD" ]]; then
+        colorEcho $RED "配置文件解析失败，请检查 ${CONFIG_JSON} 中的 sni、local_port、password"
+        exit 1
+    fi
+}
+
+printAcmeFailure() {
+    colorEcho $RED "获取证书失败，请检查以下信息"
+    colorEcho $YELLOW "域名: ${DOMAIN}"
+    colorEcho $YELLOW "日志: ${ACME_LOG}"
+    if [[ -f "$ACME_LOG" ]]; then
+        echo "----- acme.sh last 40 lines -----"
+        tail -n 40 "$ACME_LOG"
+        echo "---------------------------------"
+    fi
 }
 
 installNginx() {
@@ -222,6 +246,8 @@ stopNginx() {
 
 getCert() {
     mkdir -p /etc/trojan-go
+    : > "$ACME_LOG"
+
     if [[ -z ${CERT_FILE+x} ]]; then
         stopNginx
         systemctl stop trojan-go
@@ -244,27 +270,32 @@ getCert() {
             systemctl start cron
             systemctl enable cron
         fi
-        curl -sL https://get.acme.sh | sh -s email=byron.zhuwenbo@gmail.com
-        source ~/.bashrc
-        ~/.acme.sh/acme.sh --upgrade --auto-upgrade
-        ~/.acme.sh/acme.sh --set-default-ca --server letsencrypt
-        if [[ "$BT" = "false" ]]; then
-            ~/.acme.sh/acme.sh --issue -d $DOMAIN --keylength ec-256 --pre-hook "systemctl stop nginx" --post-hook "systemctl restart nginx" --standalone --force
-        else
-            ~/.acme.sh/acme.sh --issue -d $DOMAIN --keylength ec-256 --pre-hook "nginx -s stop || { echo -n ''; }" --post-hook "nginx -c /www/server/nginx/conf/nginx.conf || { echo -n ''; }" --standalone --force
+        curl -sL https://get.acme.sh | sh -s email=byron.zhuwenbo@gmail.com >> "$ACME_LOG" 2>&1
+        if [[ ! -x "$ACME_CMD" ]]; then
+            printAcmeFailure
+            exit 1
         fi
-        [[ -f ~/.acme.sh/${DOMAIN}_ecc/ca.cer ]] || {
-            colorEcho $RED "获取证书失败，请复制上面的红色文字到 https://hijk.art 反馈"
+
+        "$ACME_CMD" --upgrade --auto-upgrade >> "$ACME_LOG" 2>&1
+        "$ACME_CMD" --set-default-ca --server letsencrypt >> "$ACME_LOG" 2>&1
+        if [[ "$BT" = "false" ]]; then
+            "$ACME_CMD" --issue -d "$DOMAIN" --keylength ec-256 --pre-hook "systemctl stop nginx" --post-hook "systemctl restart nginx" --standalone --force >> "$ACME_LOG" 2>&1
+        else
+            "$ACME_CMD" --issue -d "$DOMAIN" --keylength ec-256 --pre-hook "nginx -s stop || { echo -n ''; }" --post-hook "nginx -c /www/server/nginx/conf/nginx.conf || { echo -n ''; }" --standalone --force >> "$ACME_LOG" 2>&1
+        fi
+
+        [[ -f "${ACME_HOME}/${DOMAIN}_ecc/ca.cer" ]] || {
+            printAcmeFailure
             exit 1
         }
         CERT_FILE="/etc/trojan-go/${DOMAIN}.pem"
         KEY_FILE="/etc/trojan-go/${DOMAIN}.key"
-        ~/.acme.sh/acme.sh  --install-cert -d $DOMAIN --ecc \
+        "$ACME_CMD" --install-cert -d "$DOMAIN" --ecc \
             --key-file       $KEY_FILE  \
             --fullchain-file $CERT_FILE \
-            --reloadcmd     "service nginx force-reload"
+            --reloadcmd     "systemctl reload nginx || service nginx reload || true" >> "$ACME_LOG" 2>&1
         [[ -f $CERT_FILE && -f $KEY_FILE ]] || {
-            colorEcho $RED "获取证书失败，请到 https://hijk.art 反馈"
+            printAcmeFailure
             exit 1
         }
     else
