@@ -49,4 +49,7 @@ async function bootstrap() {
   await app.listen(configService.get('PORT') || 8086)
 }
 
-bootstrap()
+bootstrap().catch(error => {
+  console.error('Application failed to start', error)
+  process.exit(1)
+})
