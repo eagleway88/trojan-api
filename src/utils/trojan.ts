@@ -31,7 +31,7 @@ export async function configTrojanJson(
   "remote_addr": "127.0.0.1",
   "remote_port": 80,
   "password": [
-      "${createHash('md5').update(ip).digest('hex')}"
+      "123456AAaa"
   ],
   "ssl": {
     "cert": "",
