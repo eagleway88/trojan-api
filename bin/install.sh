@@ -29,7 +29,7 @@ fi
 
 ZIP_FILE="trojan-go"
 CONFIG_FILE="/etc/trojan-go/config.json"
-CONFIG_JSON="/opt/trojan-go-cmd/bin/${IP}.json"
+CONFIG_JSON="/opt/trojan-api/bin/${IP}.json"
 ACME_HOME="${HOME}/.acme.sh"
 ACME_CMD="${ACME_HOME}/acme.sh"
 ACME_LOG="/tmp/trojan-go-acme.log"
