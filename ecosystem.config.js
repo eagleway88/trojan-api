@@ -5,11 +5,13 @@ module.exports = {
       script: './dist/main.js', // 编译后的 NestJS 入口文件 [2]
       instances: 'max', // 开启集群模式，'max'代表使用所有 CPU 核心 [9]
       exec_mode: 'cluster', // 模式：cluster（集群）或 fork（单实例）
+      instance_var: 'NODE_APP_INSTANCE', // 仅 0 号 worker 运行动态调度任务
 
       // // 环境变量
-      // env: {
-      //   NODE_ENV: 'development' // 默认开发环境
-      // },
+      env: {
+        SCHEDULER_ENABLED: 'true',
+        SCHEDULER_RECONCILE_MS: '60000'
+      },
       // env_production: {
       //   NODE_ENV: 'production', // 生产环境 [10]
       //   PORT: 3000 // 应用端口

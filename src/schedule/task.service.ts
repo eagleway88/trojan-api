@@ -1,4 +1,9 @@
-import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common'
+import {
+  Injectable,
+  Logger,
+  OnApplicationBootstrap,
+  OnApplicationShutdown
+} from '@nestjs/common'
 import { SchedulerRegistry } from '@nestjs/schedule'
 import { InjectRepository } from '@nestjs/typeorm'
 import { join } from 'path'
@@ -8,8 +13,14 @@ import { Repository } from 'typeorm'
 import { CronJob } from 'cron'
 
 @Injectable()
-export class TaskService implements OnApplicationBootstrap {
+export class TaskService
+  implements OnApplicationBootstrap, OnApplicationShutdown {
   private readonly logger = new Logger(TaskService.name)
+  private readonly jobPrefix = 'task_server_'
+  private readonly reconcileIntervalMs = Number(
+    process.env.SCHEDULER_RECONCILE_MS || 60_000
+  )
+  private reconcileTimer?: NodeJS.Timeout
 
   constructor(
     private schedulerRegistry: SchedulerRegistry,
@@ -18,40 +29,75 @@ export class TaskService implements OnApplicationBootstrap {
   ) { }
 
   async onApplicationBootstrap() {
-    await this.initializeDynamicTasks()
+    if (!this.isSchedulerWorker()) {
+      this.logger.log(
+        `跳过动态任务初始化，当前实例: ${this.fetchInstanceLabel()}`
+      )
+      return
+    }
+
+    await this.reconcileDynamicTasks()
+
+    this.reconcileTimer = setInterval(() => {
+      void this.reconcileDynamicTasks()
+    }, this.reconcileIntervalMs)
+    this.reconcileTimer.unref?.()
+  }
+
+  onApplicationShutdown() {
+    if (this.reconcileTimer) {
+      clearInterval(this.reconcileTimer)
+    }
   }
 
   /**
    * 刷新单个定时任务（删除旧的，启动新的）
    */
-  async refreshCronJob(id: number) {
-    const jobName = `task_server_${id}`;
-
-    // 1. 尝试停止并删除已存在的旧任务
-    try {
-      const oldJob = this.schedulerRegistry.getCronJob(jobName);
-      if (oldJob) {
-        await oldJob.stop();
-        this.schedulerRegistry.deleteCronJob(jobName);
-        this.logger.log(`已停止并移除旧任务: ${jobName}`);
-      }
-    } catch (e) {
-      // 如果任务不存在，getCronJob 会抛错，这里直接忽略即可
+  async refreshCronJob(_id: number) {
+    if (!this.isSchedulerWorker()) {
+      this.logger.log(
+        `当前实例未启用调度器，等待 leader 自动同步: ${this.fetchInstanceLabel()}`
+      )
+      return
     }
 
-    await this.initializeDynamicTasks()
+    await this.reconcileDynamicTasks()
   }
 
-  private async initializeDynamicTasks() {
+  private isSchedulerWorker() {
+    if (process.env.SCHEDULER_ENABLED === 'false') return false
+
+    const instance = process.env.NODE_APP_INSTANCE
+    return instance == null || instance === '0'
+  }
+
+  private fetchInstanceLabel() {
+    return process.env.NODE_APP_INSTANCE ?? 'single'
+  }
+
+  private clearManagedJobs() {
+    for (const [jobName, job] of this.schedulerRegistry.getCronJobs()) {
+      if (!jobName.startsWith(this.jobPrefix)) continue
+      job.stop()
+      this.schedulerRegistry.deleteCronJob(jobName)
+      this.logger.log(`已停止并移除旧任务: ${jobName}`)
+    }
+  }
+
+  private async reconcileDynamicTasks() {
     const [servers, ip] = await Promise.all([
       this.tServer.findBy({ type: 0 }),
       execSync('curl -sL -4 ip.sb')
     ])
+
+    this.clearManagedJobs()
+
     if (!ip || !servers.length) return
+
     const item = servers.find(e => e.ip === ip)
     const index = servers.findIndex(e => e.ip === ip)
     if (!item) return
-    const jobName = `task_server_${item.id}`
+    const jobName = `${this.jobPrefix}${item.id}`
 
     // 0 10 * * * *  每小时，在第10分钟开始时
     let minute = (index + servers.length) * 3
@@ -64,12 +110,12 @@ export class TaskService implements OnApplicationBootstrap {
     })
 
     // 2. 将任务添加到调度注册表
-    this.schedulerRegistry.addCronJob(jobName, job);
+    this.schedulerRegistry.addCronJob(jobName, job)
 
     // 3. 启动任务
-    job.start();
+    job.start()
 
-    this.logger.log(`已为 Server ID: ${item.id} 启动定时任务 [${cronExpression}]`);
+    this.logger.log(`已为 Server ID: ${item.id} 启动定时任务 [${cronExpression}]`)
   }
 
   private executeTask() {
