@@ -19,6 +19,7 @@ export async function fetchTrojanStatus(port: number): Promise<ServerStatusEnum>
   return res ? ServerStatusEnum.STARTED : ServerStatusEnum.NOT_STARTED
 }
 
+// password 不能给太长`createHash('md5').update(ip).digest('hex')`不行
 export async function configTrojanJson(
   ip: string,
   port: number,
