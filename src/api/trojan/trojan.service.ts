@@ -8,7 +8,7 @@ import { Repository } from 'typeorm'
 import { TrojanLimitDto, TrojanUserDto, TrojanUserInfo } from './trojan.dto'
 import { configTrojanJson, fetchTrojanStatus } from 'src/utils/trojan'
 import { startNginx, stopNginx } from 'src/utils/trojan'
-import { existsSync, readFileSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { TaskService } from 'src/schedule/task.service'
 import { EnableEnum, ServerStatusEnum, TrojanActionEnum } from 'src/enums'
 
@@ -29,9 +29,12 @@ export class TrojanService {
   ) { }
 
   private async updateTrojan(isInstall?: boolean) {
-    if (isInstall && existsSync('/usr/share/nginx/html/index.html')) {
-      const html = readFileSync(join(__dirname, '../../../html/index.html'))
-      writeFileSync('/usr/share/nginx/html/index.html', html, {
+    const htmlDir = '/usr/share/nginx/html'
+    const htmlFile = join(__dirname, '../../../html/index.html')
+    if (isInstall && existsSync(htmlFile)) {
+      mkdirSync(htmlDir, { recursive: true })
+      const html = readFileSync(htmlFile)
+      writeFileSync(`${htmlDir}/index.html`, html, {
         encoding: 'utf-8'
       })
     }
@@ -58,7 +61,8 @@ export class TrojanService {
     runSpawnAndLog(
       `install-${entity.domain.replaceAll('.', '-')}`,
       'bash',
-      [join(__dirname, '../../../bin/install.sh')],
+      // 静态页模式：bash install.sh NO，反代模式：bash install.sh https://example.com
+      [join(__dirname, '../../../bin/install.sh'), 'NO'],
       () => this.updateTrojan(true)
     )
     entity.status = ServerStatusEnum.INSTALLATION_IN_PROGRESS

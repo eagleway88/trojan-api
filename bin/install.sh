@@ -10,6 +10,11 @@ BLUE="\033[36m"     # Info message
 PLAIN='\033[0m'
 
 OS=`hostnamectl | grep -i system | cut -d: -f2`
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+PROJECT_HTML="${SCRIPT_DIR}/../html/index.html"
+PROJECT_ROBOTS="${SCRIPT_DIR}/../html/robots.txt"
+PROXY_URL_ARG="${1:-NO}"
+PROXY_URL=""
 
 V6_PROXY=""
 IP=`curl -sL -4 ip.sb`
@@ -38,6 +43,25 @@ WS="false"
 
 colorEcho() {
     echo -e "${1}${@:2}${PLAIN}"
+}
+
+isValidHttpUrl() {
+    [[ "$1" =~ ^https?://[^[:space:]]+$ ]]
+}
+
+initProxyUrl() {
+    if [[ "$PROXY_URL_ARG" = "NO" || "$PROXY_URL_ARG" = "" ]]; then
+        PROXY_URL=""
+        return
+    fi
+
+    if isValidHttpUrl "$PROXY_URL_ARG"; then
+        PROXY_URL="$PROXY_URL_ARG"
+        return
+    fi
+
+    colorEcho $YELLOW "传入的 PROXY_URL 无效，已忽略: ${PROXY_URL_ARG}"
+    PROXY_URL=""
 }
 
 checkSystem() {
@@ -306,12 +330,26 @@ getCert() {
 
 configNginx() {
     mkdir -p /usr/share/nginx/html
+    if [[ -f "$PROJECT_HTML" ]]; then
+        cp "$PROJECT_HTML" /usr/share/nginx/html/index.html
+    fi
+    if [[ -f "$PROJECT_ROBOTS" ]]; then
+        cp "$PROJECT_ROBOTS" /usr/share/nginx/html/robots.txt
+    fi
     if [[ "$ALLOW_SPIDER" = "n" ]]; then
         echo 'User-Agent: *' > /usr/share/nginx/html/robots.txt
         echo 'Disallow: /' >> /usr/share/nginx/html/robots.txt
         ROBOT_CONFIG="    location = /robots.txt {}"
     else
         ROBOT_CONFIG=""
+    fi
+    if [[ "$PROXY_URL" = "" ]]; then
+        colorEcho $BLUE "nginx伪装站点模式: 本地静态页 (/usr/share/nginx/html/index.html)"
+    else
+        colorEcho $YELLOW "nginx伪装站点模式: 反向代理 (${PROXY_URL})，访问域名首页不会返回本地 index.html"
+        if [[ "$REMOTE_HOST" = "" ]]; then
+            colorEcho $YELLOW "REMOTE_HOST 未设置，sub_filter 不会替换目标站点主机名"
+        fi
     fi
     if [[ "$BT" = "false" ]]; then
         if [[ ! -f /etc/nginx/nginx.conf.bak ]]; then
@@ -612,6 +650,11 @@ showInfo() {
     echo -e "伪装域名/主机名(host)/SNI/peer名称：${RED}$domain${PLAIN}"
     echo -e "端口(port)：${RED}$port${PLAIN}"
     echo -e "密码(password)：${RED}$password${PLAIN}"
+    if [[ "$PROXY_URL" = "" ]]; then
+        echo -e "伪装站点模式：${RED}本地静态页${PLAIN} /usr/share/nginx/html/index.html"
+    else
+        echo -e "伪装站点模式：${RED}反向代理${PLAIN} -> ${PROXY_URL}"
+    fi
     if [[ $ws = "true" ]]; then
         echo -e "websocket：${RED}true${PLAIN}"
         wspath=`grep path $CONFIG_FILE | cut -d: -f2 | tr -d \",' '`
@@ -621,4 +664,5 @@ showInfo() {
 }
 
 checkSystem
+initProxyUrl
 install
