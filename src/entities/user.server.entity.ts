@@ -60,7 +60,7 @@ export class UserServer {
   })
   platform: PlatformTypeEnum
 
-  @Column('varchar', {
+  @Column('text', {
     name: 'external_content',
     comment: '外部资源内容(类似vless://xxx)',
     nullable: true

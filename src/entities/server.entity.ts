@@ -1,6 +1,6 @@
 import { Column, Entity, Unique, PrimaryGeneratedColumn, OneToMany } from 'typeorm'
 import { UpdateDateColumn, CreateDateColumn } from 'typeorm'
-import { EnableEnum, ServerStatusEnum, ServerTypeEnum } from '../enums'
+import { EnableEnum, ServerSourceEnum, ServerStatusEnum, ServerTypeEnum } from '../enums'
 import { UserServer } from './user.server.entity'
 
 @Entity('servers')
@@ -135,6 +135,14 @@ export class Server {
   })
   type: ServerTypeEnum
 
+  @Column({
+    type: 'tinyint',
+    name: 'source',
+    comment: '0-手动添加、1-网络抓取',
+    default: () => '0'
+  })
+  source: ServerSourceEnum
+
   @Column('varchar', {
     name: 'protocol',
     comment: '代理协议(trojan/vless)',
@@ -142,7 +150,7 @@ export class Server {
   })
   protocol: string
 
-  @Column('varchar', {
+  @Column('text', {
     name: 'external_content',
     comment: '外部资源配置(类似vless://xxx)',
     nullable: true

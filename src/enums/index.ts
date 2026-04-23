@@ -33,6 +33,13 @@ export enum ServerTypeEnum {
   EXTERNAL
 }
 
+export enum ServerSourceEnum {
+  /** 手动添加 */
+  MANUAL,
+  /** 网络抓取 */
+  NETWORK
+}
+
 export enum TrojanActionEnum {
   DEL = 'DEL',
   ADD = 'ADD',
