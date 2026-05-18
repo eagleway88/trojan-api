@@ -2,7 +2,6 @@ import { ServerStatusEnum } from '../enums'
 import { execSync, to } from '.'
 import { writeFileSync } from 'fs'
 import { join } from 'path'
-import { createHash } from 'crypto'
 
 export async function startNginx(bt: boolean) {
   await to(execSync(bt ? '/etc/init.d/nginx start' : 'systemctl start nginx'))
