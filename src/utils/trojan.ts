@@ -25,14 +25,15 @@ export async function configTrojanJson(
   port: number,
   domain: string,
 ) {
-  let text = `
+  const pwd = `${domain.split('.')[0]}${ip.replaceAll('.', '')}`
+  const text = `
   "run_type": "server",
   "local_addr": "::",
   "local_port": ${port},
   "remote_addr": "127.0.0.1",
   "remote_port": 80,
   "password": [
-      "123456AAaa"
+      "${pwd}"
   ],
   "ssl": {
     "cert": "",
