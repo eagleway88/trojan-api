@@ -1,16 +1,20 @@
 import { Injectable } from '@nestjs/common'
-import { InjectRepository } from '@nestjs/typeorm'
 import { join } from 'path'
-import { Server } from 'src/entities/server.entity'
-import { execSync, runSpawnAndLog, sleep, to } from 'src/utils'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
+
+import { execSync, sleep, to } from 'src/utils'
 import { apiUtil } from 'src/utils/api'
-import { Repository } from 'typeorm'
-import { TrojanLimitDto, TrojanUserDto, TrojanUserInfo } from './trojan.dto'
+import {
+  TrojanControlDto,
+  TrojanLimitDto,
+  TrojanUserDto,
+  TrojanUserInfo,
+  TrojanUserSyncDto
+} from './trojan.dto'
 import { configTrojanJson, fetchTrojanStatus } from 'src/utils/trojan'
 import { startNginx, stopNginx } from 'src/utils/trojan'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { TaskService } from 'src/schedule/task.service'
-import { EnableEnum, ServerStatusEnum, TrojanActionEnum } from 'src/enums'
+import { ServerStatusEnum, TrojanActionEnum } from 'src/enums'
 
 export const statusText: Record<number, string> = {
   [ServerStatusEnum.NOT_INSTALLED]: '未安装',
@@ -22,13 +26,9 @@ export const statusText: Record<number, string> = {
 
 @Injectable()
 export class TrojanService {
-  constructor(
-    private readonly taskService: TaskService,
-    @InjectRepository(Server)
-    private readonly tServer: Repository<Server>
-  ) { }
+  constructor(private readonly taskService: TaskService) {}
 
-  private async updateTrojan(isInstall?: boolean) {
+  private scheduleStatusSync(isInstall?: boolean) {
     const htmlDir = '/usr/share/nginx/html'
     const htmlFile = join(__dirname, '../../../html/index.html')
     if (isInstall && existsSync(htmlFile)) {
@@ -38,114 +38,89 @@ export class TrojanService {
         encoding: 'utf-8'
       })
     }
-    runSpawnAndLog('update-trojan', process.argv[0], [
-      join(__dirname, '../../scripts/update-trojan.js')
-    ])
+    this.taskService.triggerSync()
   }
 
-  async install() {
-    const ip = await execSync('curl -sL -4 ip.sb')
+  async install(body: TrojanControlDto) {
+    const serverIdError = this.assertServerId(body.serverId)
+    if (serverIdError) return serverIdError
+    if (!body.port) return apiUtil.error('未配置端口')
+    if (!body.domain) return apiUtil.error('未配置域名')
+
+    const ip = await this.fetchLocalIp()
     if (!ip) return apiUtil.error('本机IP获取失败')
-    const entity = await this.tServer.findOneBy({
-      ip: ip,
-      enable: EnableEnum.YES
-    })
-    if (!entity) return apiUtil.error('资源不存在')
-    if (!entity.port) return apiUtil.error('未配置端口')
-    if (!entity.domain) return apiUtil.error('未配置域名')
-    if (entity.status !== ServerStatusEnum.NOT_INSTALLED) {
-      return apiUtil.error(`当前服务器-${statusText[entity.status]}`)
-    }
-    // 配置 trojan
-    configTrojanJson(ip, entity.port, entity.domain)
-    runSpawnAndLog(
-      `install-${entity.domain.replaceAll('.', '-')}`,
+
+    await configTrojanJson(ip, body.port, body.domain)
+    this.taskService.spawnTask(
+      `install-${body.serverId}`,
       'bash',
-      // 静态页模式：bash install.sh NO，反代模式：bash install.sh https://example.com
-      [join(__dirname, '../../../bin/install.sh'), 'NO'],
-      () => this.updateTrojan(true)
+      [join(__dirname, '../../../bin/install.sh'), body.proxyUrl || 'NO'],
+      () => {
+        void this.scheduleStatusSync(true)
+      }
     )
-    entity.status = ServerStatusEnum.INSTALLATION_IN_PROGRESS
-    await this.tServer.save(entity)
-    return apiUtil.data(`${entity.id}`)
+
+    return apiUtil.data(`${body.serverId}`)
   }
 
-  async uninstall() {
-    const ip = await execSync('curl -sL -4 ip.sb')
-    if (!ip) return apiUtil.error('本机IP获取失败')
-    const entity = await this.tServer.findOneBy({
-      ip: ip,
-      enable: EnableEnum.YES
-    })
-    if (!entity) return apiUtil.error('资源不存在')
-    if (![ServerStatusEnum.NOT_INSTALLED, ServerStatusEnum.STARTED].includes(entity.status)) {
-      return apiUtil.error(`当前服务器-${statusText[entity.status]}`)
-    }
-    runSpawnAndLog(
-      `uninstall-${entity.domain.replaceAll('.', '-')}`,
+  uninstall(body: TrojanControlDto) {
+    const serverIdError = this.assertServerId(body.serverId)
+    if (serverIdError) return serverIdError
+
+    this.taskService.spawnTask(
+      `uninstall-${body.serverId}`,
       'bash',
       [join(__dirname, '../../../bin/uninstall.sh')],
-      () => this.updateTrojan()
+      () => {
+        void this.scheduleStatusSync()
+      }
     )
-    entity.status = ServerStatusEnum.UNINSTALLING
-    await this.tServer.save(entity)
-    return apiUtil.data(`${entity.id}`)
+
+    return apiUtil.data(`${body.serverId}`)
   }
 
-  async start() {
-    const ip = await execSync('curl -sL -4 ip.sb')
-    if (!ip) return apiUtil.error('本机IP获取失败')
-    const entity = await this.tServer.findOneBy({
-      ip: ip,
-      enable: EnableEnum.YES
-    })
-    if (!entity) return apiUtil.error('资源不存在')
-    if (entity.status !== ServerStatusEnum.NOT_INSTALLED) {
-      return apiUtil.error(`当前服务器-${statusText[entity.status]}`)
-    }
-    const trojanStatus = await fetchTrojanStatus(entity.port)
+  async start(body: TrojanControlDto) {
+    const serverIdError = this.assertServerId(body.serverId)
+    if (serverIdError) return serverIdError
+    if (!body.port) return apiUtil.error('未配置端口')
+
+    const trojanStatus = await fetchTrojanStatus(body.port)
     if (trojanStatus !== ServerStatusEnum.NOT_STARTED) {
-      return apiUtil.error(`当前服务器-${statusText[entity.status]}`)
+      return apiUtil.error(`当前服务器-${statusText[trojanStatus]}`)
     }
     const [, bt] = await to(execSync('which bt 2>/dev/null'))
     await stopNginx(!!bt)
     await startNginx(!!bt)
     await execSync('systemctl restart trojan-go')
     await sleep()
-    const res = await fetchTrojanStatus(entity.port)
+    const res = await fetchTrojanStatus(body.port)
     if (res !== ServerStatusEnum.STARTED) {
-      return apiUtil.error(`当前服务器-${statusText[entity.status]}`)
+      return apiUtil.error(`当前服务器-${statusText[res]}`)
     }
-    entity.status = ServerStatusEnum.STARTED
-    await this.tServer.save(entity)
-    return apiUtil.data(`${entity.id}`)
+    this.taskService.triggerSync()
+    return apiUtil.data(`${body.serverId}`)
   }
 
-  async stop() {
-    const ip = await execSync('curl -sL -4 ip.sb')
-    if (!ip) return apiUtil.error('本机IP获取失败')
-    const entity = await this.tServer.findOneBy({
-      ip: ip,
-      enable: EnableEnum.YES
-    })
-    if (!entity) return apiUtil.error('资源不存在')
-    if (entity.status !== ServerStatusEnum.STARTED) {
-      return apiUtil.error(`当前服务器-${statusText[entity.status]}`)
-    }
-    const trojanStatus = await fetchTrojanStatus(entity.port)
+  async stop(body: TrojanControlDto) {
+    const serverIdError = this.assertServerId(body.serverId)
+    if (serverIdError) return serverIdError
+    if (!body.port) return apiUtil.error('未配置端口')
+
+    const trojanStatus = await fetchTrojanStatus(body.port)
     if (trojanStatus !== ServerStatusEnum.STARTED) {
-      return apiUtil.error(`当前服务器-${statusText[entity.status]}`)
+      return apiUtil.error(`当前服务器-${statusText[trojanStatus]}`)
     }
     const [, bt] = await to(execSync('which bt 2>/dev/null'))
     await stopNginx(!!bt)
     await execSync('systemctl stop trojan-go')
-    entity.status = ServerStatusEnum.NOT_STARTED
-    await this.tServer.save(entity)
     if (bt) await startNginx(true)
-    return apiUtil.data(`${entity.id}`)
+    this.taskService.triggerSync()
+    return apiUtil.data(`${body.serverId}`)
   }
 
   async userUpdate(body: TrojanUserDto) {
+    const serverIdError = this.assertServerId(body.serverId)
+    if (serverIdError) return serverIdError
     if (!body.pwds || !Array.isArray(body.pwds) || !body.pwds.length) {
       return apiUtil.data([])
     }
@@ -163,12 +138,16 @@ export class TrojanService {
         if (res !== 'Done') {
           hashs.push({ pwd: pwd, error: res })
         } else {
-          const info = await execSync(`trojan-go -api get -target-password ${pwd}`)
+          const info = await execSync(
+            `trojan-go -api get -target-password ${pwd}`
+          )
           const item = JSON.parse(info) as ItemT
           hashs.push({ pwd: pwd, hash: item.status?.user?.hash })
         }
       } else if (body.action === TrojanActionEnum.QUERY) {
-        const info = await execSync(`trojan-go -api get -target-password ${pwd}`)
+        const info = await execSync(
+          `trojan-go -api get -target-password ${pwd}`
+        )
         const item = JSON.parse(info) as ItemT
         hashs.push({ pwd: pwd, hash: item.status?.user?.hash })
       }
@@ -177,6 +156,8 @@ export class TrojanService {
   }
 
   async userLimit(body: TrojanLimitDto) {
+    const serverIdError = this.assertServerId(body.serverId)
+    if (serverIdError) return serverIdError
     if (!body.pwds || !Array.isArray(body.pwds) || !body.pwds.length) {
       return apiUtil.data([])
     }
@@ -190,15 +171,66 @@ export class TrojanService {
     return apiUtil.data(hashs)
   }
 
-  async refreshCronJob() {
-    const ip = await execSync('curl -sL -4 ip.sb')
-    if (!ip) return apiUtil.error('本机IP获取失败')
-    const entity = await this.tServer.findOneBy({
-      ip: ip
-    })
-    if (!entity) return apiUtil.error('资源不存在')
-    await this.taskService.refreshCronJob(entity.id)
-    return apiUtil.data('success')
+  async userSync(body: TrojanUserSyncDto) {
+    const serverIdError = this.assertServerId(body.serverId)
+    if (serverIdError) return serverIdError
+
+    if (!body.users?.length) {
+      return apiUtil.data([])
+    }
+
+    const results: TrojanUserInfo[] = []
+    for (const user of body.users) {
+      const addRes = await to(
+        execSync(
+          `trojan-go -api set -add-profile -target-password ${user.password}`
+        )
+      )
+      if (addRes[0] && !`${addRes[0]}`.includes('Done')) {
+        const info = await this.queryUserInfo(user.password)
+        if (!info) {
+          results.push({ pwd: user.password, error: `${addRes[0]}` })
+          continue
+        }
+      }
+
+      const limitRes = await execSync(
+        `trojan-go -api-addr 127.0.0.1:10000 -api set -modify-profile -target-password ${user.password} -ip-limit ${user.ipLimit} -upload-speed-limit ${user.uploadLimit} -download-speed-limit ${user.downloadLimit}`
+      )
+      if (limitRes !== 'Done') {
+        results.push({ pwd: user.password, error: limitRes })
+        continue
+      }
+
+      const info = await this.queryUserInfo(user.password)
+      if (!info) {
+        results.push({ pwd: user.password, error: '用户信息读取失败' })
+        continue
+      }
+      results.push({ pwd: user.password, hash: info.status?.user?.hash })
+    }
+
+    return apiUtil.data(results)
+  }
+
+  private assertServerId(serverId: number) {
+    const expected = process.env.INTERNAL_SERVER_ID
+    if (!expected) return
+    if (`${serverId}` !== `${expected}`) {
+      return apiUtil.error('serverId mismatch')
+    }
+  }
+
+  private async fetchLocalIp() {
+    return execSync('curl -sL -4 ip.sb')
+  }
+
+  private async queryUserInfo(password: string) {
+    const [, info] = await to(
+      execSync(`trojan-go -api get -target-password ${password}`)
+    )
+    if (!info) return null
+    return JSON.parse(info) as ItemT
   }
 }
 

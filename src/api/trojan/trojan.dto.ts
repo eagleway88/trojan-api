@@ -1,14 +1,36 @@
-import { IsString, IsNumber, IsNotEmpty } from 'class-validator'
+import { Type } from 'class-transformer'
+import {
+  IsArray,
+  IsNumber,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  ValidateNested
+} from 'class-validator'
 import { TrojanActionEnum } from 'src/enums'
+
+export class TrojanControlDto {
+  @IsNumber()
+  @IsNotEmpty()
+  serverId: number
+
+  @IsNumber()
+  @IsOptional()
+  port?: number
+
+  @IsString()
+  @IsOptional()
+  domain?: string
+
+  @IsString()
+  @IsOptional()
+  proxyUrl?: string
+}
 
 export class TrojanUserDto {
   @IsNumber()
   @IsNotEmpty()
-  apiPort: number
-
-  @IsString()
-  @IsNotEmpty()
-  ip: string
+  serverId: number
 
   @IsString()
   @IsNotEmpty()
@@ -20,11 +42,7 @@ export class TrojanUserDto {
 export class TrojanLimitDto {
   @IsNumber()
   @IsNotEmpty()
-  apiPort: number
-
-  @IsString()
-  @IsNotEmpty()
-  ip: string
+  serverId: number
 
   @IsNumber()
   @IsNotEmpty()
@@ -45,4 +63,37 @@ export class TrojanUserInfo {
   hash?: string
   error?: string
   pwd?: string
+}
+
+export class TrojanUserSyncItemDto {
+  @IsNumber()
+  @IsNotEmpty()
+  userId: number
+
+  @IsString()
+  @IsNotEmpty()
+  password: string
+
+  @IsNumber()
+  @IsNotEmpty()
+  ipLimit: number
+
+  @IsNumber()
+  @IsNotEmpty()
+  uploadLimit: number
+
+  @IsNumber()
+  @IsNotEmpty()
+  downloadLimit: number
+}
+
+export class TrojanUserSyncDto {
+  @IsNumber()
+  @IsNotEmpty()
+  serverId: number
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => TrojanUserSyncItemDto)
+  users: TrojanUserSyncItemDto[]
 }

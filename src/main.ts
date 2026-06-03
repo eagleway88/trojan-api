@@ -42,9 +42,15 @@ async function bootstrap() {
   app.use(compression())
   app.use(helmet())
 
-  const builder = new DocumentBuilder()
-  const document = SwaggerModule.createDocument(app, builder.build())
-  SwaggerModule.setup('api/docs', app, document)
+  const enableSwagger =
+    configService.get('SWAGGER_ENABLED') === 'true' ||
+    configService.get('NODE_ENV') !== 'production'
+
+  if (enableSwagger) {
+    const builder = new DocumentBuilder()
+    const document = SwaggerModule.createDocument(app, builder.build())
+    SwaggerModule.setup('api/docs', app, document)
+  }
 
   await app.listen(configService.get('PORT') || 8086)
 }

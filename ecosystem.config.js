@@ -10,7 +10,8 @@ module.exports = {
       // // 环境变量
       env: {
         SCHEDULER_ENABLED: 'true',
-        SCHEDULER_RECONCILE_MS: '60000'
+        STATUS_SYNC_CRON: '0 */5 * * * *',
+        SWAGGER_ENABLED: 'false'
       },
       // env_production: {
       //   NODE_ENV: 'production', // 生产环境 [10]

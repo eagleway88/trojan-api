@@ -1,10 +1,12 @@
-import { Body, Controller, Post } from '@nestjs/common'
+import { Body, Controller, Post, UseGuards } from '@nestjs/common'
 import { LogService } from './log.service'
 import { LogItem, LogPageDto } from './log.dto'
 import { ApiOperation, ApiTags } from '@nestjs/swagger'
 import { ApiResult } from 'src/decorators'
+import { InternalSignatureGuard } from 'src/internal-auth/internal-signature.guard'
 
 @ApiTags('log')
+@UseGuards(InternalSignatureGuard)
 @Controller('log')
 export class LogController {
   constructor(private readonly service: LogService) {}
