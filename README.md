@@ -31,6 +31,29 @@
 $ yarn install
 ```
 
+## Environment Variables
+
+复制 `.env.example` 为 `.env.local` 或 `.env` 后，再按部署环境填写下面这些参数。
+
+| 参数 | 必填 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| PORT | 否 | 8086 | 辅助项目监听端口。 |
+| SWAGGER_ENABLED | 否 | false | 是否暴露 Swagger 文档。生产环境建议保持为 false。 |
+| SCHEDULER_ENABLED | 否 | true | 是否启用本机状态上报调度。设置为 false 时不会自动触发状态回调。 |
+| STATUS_SYNC_CRON | 否 | `0 */5 * * * *` | 本机状态上报 cron 表达式。默认每 5 分钟执行一次。 |
+| MAIN_API_BASE_URL | 是 | 无 | 主项目 HTTP 地址，供辅助项目回调状态同步接口使用。建议写完整协议、域名和端口，并且不要带结尾 `/`。 |
+| INTERNAL_SERVER_ID | 是 | 无 | 当前节点在主项目 `servers` 表中的主键 ID。辅助项目只接受与该 serverId 匹配的内部请求。 |
+| INTERNAL_AUTH_KEY_ID | 是 | 无 | 当前节点的内部鉴权 keyId。需要与主项目 `server_internal_auths` 表中的记录一致。 |
+| INTERNAL_AUTH_SECRET | 是 | 无 | 当前节点的内部鉴权 secret。需要与 `INTERNAL_AUTH_KEY_ID` 对应，并由主项目生成或维护。 |
+| INTERNAL_SYNC_PATH | 否 | `/api/trojan/internal/sync` | 辅助项目回调主项目的状态同步路径。通常不需要改。 |
+
+### Deployment Notes
+
+- 辅助项目已经不再读取 `ORM_HOST`、`ORM_PORT`、`ORM_USERNAME`、`ORM_PASSWORD`、`ORM_DATABASE`，节点机上也不应该再保留主库连接信息。
+- `MAIN_API_BASE_URL`、`INTERNAL_AUTH_KEY_ID`、`INTERNAL_AUTH_SECRET` 和 `INTERNAL_SERVER_ID` 必须成组配置，否则状态上报和内部控制请求都会失败。
+- 如果通过 PM2 以 cluster 模式运行，需要保留 `instance_var: 'NODE_APP_INSTANCE'`，这样只有 0 号 worker 会执行固定状态上报任务。
+- 首次部署或更换节点凭据时，先在主项目执行数据库迁移并确认 `server_internal_auths` 已有对应节点记录，再把该节点的 `keyId` 和 `secret` 下发到辅助项目环境变量。
+
 ## Compile and run the project
 
 ```bash
