@@ -2,6 +2,7 @@ import * as Log4js from 'log4js'
 
 export const log4jsConfigure = () => {
   const type = { type: 'dateFile', numBackups: 7 }
+  const isPm2 = process.env.pm_id !== undefined || process.env.NODE_APP_INSTANCE !== undefined
   const options: Log4js.Configuration = {
     appenders: {
       app: { ...type, filename: 'logs/app.log' },
@@ -12,7 +13,8 @@ export const log4jsConfigure = () => {
       err: { appenders: ['err'], level: 'all' },
       sql: { appenders: ['sql'], level: 'all' },
       default: { appenders: ['app'], level: 'all' }
-    }
+    },
+    pm2: isPm2
   }
   return options
 }
