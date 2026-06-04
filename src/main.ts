@@ -5,7 +5,7 @@ import { ExceptionFilter } from './middleware/exception.filter'
 import { TransformInterceptor } from './middleware/transform.interceptor'
 import { NestExpressApplication } from '@nestjs/platform-express'
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger'
-import { log4jsConfigure } from './utils/logger'
+import { log4jsConfigure, Logs } from './utils/logger'
 import { ConfigService } from '@nestjs/config'
 import { urlencoded, json } from 'express'
 import compression from 'compression'
@@ -53,6 +53,7 @@ async function bootstrap() {
   }
 
   await app.listen(configService.get('PORT') || 8086)
+  Logs.app.log('Application launched successfully', configService.get('PORT') || 8086)
 }
 
 bootstrap().catch(error => {

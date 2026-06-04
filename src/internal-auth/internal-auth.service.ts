@@ -4,7 +4,6 @@ import { Request } from 'express'
 
 import { Logs } from 'src/utils/logger'
 import {
-  createInternalAuthNonce,
   hashInternalAuthBody,
   INTERNAL_AUTH_HEADER_MAP,
   INTERNAL_AUTH_WINDOW_MS,
