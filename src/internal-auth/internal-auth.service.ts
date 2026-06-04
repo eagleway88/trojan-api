@@ -4,7 +4,6 @@ import { Request } from 'express'
 
 import { Logs } from 'src/utils/logger'
 import {
-  hashInternalAuthBody,
   INTERNAL_AUTH_HEADER_MAP,
   INTERNAL_AUTH_WINDOW_MS,
   isInternalAuthSignatureEqual,
@@ -26,7 +25,6 @@ export class InternalAuthService {
     const keyId = this.requireHeader(request, INTERNAL_AUTH_HEADER_MAP.keyId)
     const timestamp = this.requireHeader(request, INTERNAL_AUTH_HEADER_MAP.timestamp)
     const nonce = this.requireHeader(request, INTERNAL_AUTH_HEADER_MAP.nonce)
-    const bodySha256 = this.requireHeader(request, INTERNAL_AUTH_HEADER_MAP.bodySha256)
     const signature = this.requireHeader(request, INTERNAL_AUTH_HEADER_MAP.signature)
 
     const timestampValue = Number(timestamp)
@@ -56,15 +54,6 @@ export class InternalAuthService {
       throw new UnauthorizedException('内部请求无效')
     }
 
-    const hashedBody = hashInternalAuthBody(request.rawBody)
-    if (hashedBody !== bodySha256) {
-      this.writeSecurityLog('internal-auth.request.body-sha-mismatch', {
-        keyId,
-        path: request.originalUrl
-      })
-      throw new UnauthorizedException('内部请求无效')
-    }
-
     const secret = this.requireConfig('INTERNAL_AUTH_SECRET')
     const path = normalizeInternalAuthPath(
       (request.originalUrl || request.url || '').split('?')[0]
@@ -74,7 +63,6 @@ export class InternalAuthService {
       path,
       timestamp,
       nonce,
-      bodySha256
     })
     if (!isInternalAuthSignatureEqual(expectedSignature, signature)) {
       this.writeSecurityLog('internal-auth.request.signature-mismatch', {

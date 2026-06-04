@@ -7,7 +7,6 @@ import { execSync, logError, logInfo, to } from '../utils'
 import { fetchTrojanStatus } from '../utils/trojan'
 import {
   createInternalAuthNonce,
-  hashInternalAuthBody,
   signInternalAuth
 } from '../utils/internal-auth'
 
@@ -117,13 +116,11 @@ async function reportSync(payload: Record<string, unknown>) {
   const rawBody = JSON.stringify(payload)
   const timestamp = `${Date.now()}`
   const nonce = createInternalAuthNonce()
-  const bodySha256 = hashInternalAuthBody(rawBody)
   const signature = signInternalAuth(secret, {
     method: 'POST',
     path: syncPath,
     timestamp,
     nonce,
-    bodySha256
   })
 
   const response = await fetch(`${baseUrl}${syncPath}`, {
@@ -133,7 +130,6 @@ async function reportSync(payload: Record<string, unknown>) {
       'x-internal-keyid': keyId,
       'x-internal-timestamp': timestamp,
       'x-internal-nonce': nonce,
-      'x-internal-body-sha256': bodySha256,
       'x-internal-signature': signature
     },
     body: rawBody

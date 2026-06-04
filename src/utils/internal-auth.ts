@@ -4,7 +4,6 @@ export const INTERNAL_AUTH_HEADER_MAP = {
   keyId: 'x-internal-keyid',
   timestamp: 'x-internal-timestamp',
   nonce: 'x-internal-nonce',
-  bodySha256: 'x-internal-body-sha256',
   signature: 'x-internal-signature'
 } as const
 
@@ -15,7 +14,6 @@ export type InternalAuthSigningInput = {
   path: string
   timestamp: string
   nonce: string
-  bodySha256: string
 }
 
 export function buildInternalAuthPayload(input: InternalAuthSigningInput) {
@@ -24,7 +22,6 @@ export function buildInternalAuthPayload(input: InternalAuthSigningInput) {
     normalizeInternalAuthPath(input.path),
     input.timestamp,
     input.nonce,
-    input.bodySha256
   ].join('\n')
 }
 
@@ -32,17 +29,6 @@ export function signInternalAuth(secret: string, input: InternalAuthSigningInput
   return createHmac('sha256', secret)
     .update(buildInternalAuthPayload(input))
     .digest('hex')
-}
-
-export function hashInternalAuthBody(rawBody?: Buffer | string | null) {
-  const body =
-    rawBody == null
-      ? ''
-      : Buffer.isBuffer(rawBody)
-        ? rawBody
-        : Buffer.from(rawBody)
-
-  return createHash('sha256').update(body).digest('hex')
 }
 
 export function createInternalAuthNonce(size = 16) {
